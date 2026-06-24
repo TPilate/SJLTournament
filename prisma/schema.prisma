@@ -1,0 +1,232 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  ADMIN
+  PLAYER
+}
+
+enum TournamentStatus {
+  DRAFT
+  REGISTRATION_OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TournamentFormat {
+  ROUND_ROBIN
+  SINGLE_ELIMINATION
+  DOUBLE_ELIMINATION
+  GROUP_STAGE_THEN_KNOCKOUT
+  HYBRID
+}
+
+enum StageType {
+  GROUP
+  BRACKET
+  FINAL
+  THIRD_PLACE
+}
+
+enum MatchMode {
+  TIMED
+  SCORE_TARGET
+}
+
+enum MatchStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// ============================================
+// MODELS
+// ============================================
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  role          UserRole  @default(PLAYER)
+  pseudo        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  player        Player?
+  teamsAsCaptain Team[]   @relation("CaptainToTeam")
+  
+  @@index([email])
+  @@index([role])
+}
+
+model Team {
+  id            String    @id @default(uuid())
+  name          String
+  tournamentId  String
+  captainId     String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  captain       User      @relation("CaptainToTeam", fields: [captainId], references: [id])
+  tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  players       Player[]
+  pools         Pool[]
+  matchesAsTeamA Match[]  @relation("TeamA")
+  matchesAsTeamB Match[]  @relation("TeamB")
+  matchesAsReferee Match[] @relation("RefereeTeam")
+  
+  @@unique([name, tournamentId])
+  @@index([tournamentId])
+}
+
+model Player {
+  id        String   @id @default(uuid())
+  userId    String
+  teamId    String
+  pseudo    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  user      User     @relation(fields: [userId], references: [id])
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, teamId])
+  @@index([teamId])
+  @@index([userId])
+}
+
+model Tournament {
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  format      TournamentFormat @default(GROUP_STAGE_THEN_KNOCKOUT)
+  status      TournamentStatus @default(DRAFT)
+  startDate   DateTime?
+  endDate     DateTime?
+  maxTeams    Int              @default(16)
+  maxPlayersPerTeam Int        @default(6)
+  rules       Json?            // Custom rules configuration
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  
+  // Relations
+  teams       Team[]
+  stages      Stage[]
+  matches     Match[]
+  
+  @@index([status])
+  @@index([format])
+}
+
+model Stage {
+  id          String    @id @default(uuid())
+  tournamentId String
+  type        StageType
+  name        String
+  order       Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relations
+  tournament  Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  pools       Pool[]
+  matches     Match[]
+  
+  @@unique([tournamentId, order])
+  @@index([tournamentId])
+}
+
+model Pool {
+  id          String   @id @default(uuid())
+  stageId     String
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  stage       Stage    @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  teams       Team[]
+  matches     Match[]
+  
+  @@unique([stageId, name])
+  @@index([stageId])
+}
+
+model Match {
+  id              String      @id @default(uuid())
+  tournamentId    String
+  stageId         String?
+  poolId          String?
+  teamAId         String
+  teamBId         String
+  refereeTeamId   String?
+  mode            MatchMode   @default(TIMED)
+  durationMinutes  Int?        // For TIMED mode
+  targetScore     Int?        // For SCORE_TARGET mode
+  scoreA          Int         @default(0)
+  scoreB          Int         @default(0)
+  status          MatchStatus @default(SCHEDULED)
+  startTime       DateTime?
+  endTime         DateTime?
+  locked          Boolean     @default(false)
+  lastEditorId    String?
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  // Relations
+  tournament      Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  stage           Stage?      @relation(fields: [stageId], references: [id])
+  pool            Pool?       @relation(fields: [poolId], references: [id])
+  teamA           Team        @relation("TeamA", fields: [teamAId], references: [id])
+  teamB           Team        @relation("TeamB", fields: [teamBId], references: [id])
+  refereeTeam     Team?       @relation("RefereeTeam", fields: [refereeTeamId], references: [id])
+  lastEditor      User?       @relation(fields: [lastEditorId], references: [id])
+  events          MatchEvent[]
+  
+  @@unique([tournamentId, teamAId, teamBId, startTime])
+  @@index([tournamentId])
+  @@index([stageId])
+  @@index([poolId])
+  @@index([status])
+  @@index([startTime])
+  @@index([locked])
+}
+
+model MatchEvent {
+  id          String   @id @default(uuid())
+  matchId     String
+  editorId    String
+  oldScoreA   Int
+  oldScoreB   Int
+  newScoreA   Int
+  newScoreB   Int
+  reason      String?
+  createdAt   DateTime @default(now())
+  
+  // Relations
+  match       Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  editor      User     @relation(fields: [editorId], references: [id])
+  
+  @@index([matchId])
+  @@index([editorId])
+  @@index([createdAt])
+}

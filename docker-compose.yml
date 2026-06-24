@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: sjl_tournament_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: sjl_tournament
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d sjl_tournament"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sjl_tournament_app
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://user:password@db:5432/sjl_tournament
+      JWT_SECRET: sjl-tournament-secret-key-development
+      SOCKET_IO_PORT: 3001
+      SOCKET_IO_CORS_ORIGIN: http://localhost:3000
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: sh -c "npx prisma migrate dev && npm run dev"
+
+  # Prisma Studio (optional)
+  prisma-studio:
+    image: node:20-alpine
+    container_name: sjl_tournament_prisma_studio
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/sjl_tournament
+    ports:
+      - "5555:5555"
+    command: npx prisma studio
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
