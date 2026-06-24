@@ -70,6 +70,8 @@ model User {
   // Relations
   player        Player?
   teamsAsCaptain Team[]   @relation("CaptainToTeam")
+  editedMatches Match[]   @relation("LastEditor")
+  editedEvents  MatchEvent[] @relation("EventEditor")
   
   @@index([email])
   @@index([role])
@@ -199,7 +201,7 @@ model Match {
   teamA           Team        @relation("TeamA", fields: [teamAId], references: [id])
   teamB           Team        @relation("TeamB", fields: [teamBId], references: [id])
   refereeTeam     Team?       @relation("RefereeTeam", fields: [refereeTeamId], references: [id])
-  lastEditor      User?       @relation(fields: [lastEditorId], references: [id])
+  lastEditor      User?       @relation("LastEditor", fields: [lastEditorId], references: [id])
   events          MatchEvent[]
   
   @@unique([tournamentId, teamAId, teamBId, startTime])
@@ -224,7 +226,7 @@ model MatchEvent {
   
   // Relations
   match       Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  editor      User     @relation(fields: [editorId], references: [id])
+  editor      User     @relation("EventEditor", fields: [editorId], references: [id])
   
   @@index([matchId])
   @@index([editorId])
